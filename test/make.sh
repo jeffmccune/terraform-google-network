@@ -35,7 +35,12 @@ maketemp() {
 find_files() {
   local pth="$1"
   shift
-  find "${pth}" '(' -path '*/.git' -o -path '*/.terraform' ')' \
+  # Note: Take care to use -print or -print0 when using this function,
+  # otherwise excluded directories will be included in the output.
+  find "${pth}" '(' \
+    -path '*/.git' -o \
+    -path '*/.terraform' -o \
+    -path '*/.kitchen' ')' \
     -prune -o -type f "$@"
 }
 
@@ -73,17 +78,15 @@ function docker() {
 # This function runs 'terraform validate' against all
 # directory paths which contain *.tf files.
 function check_terraform() {
-  echo "Running terraform validate"
-  find . -name "*.tf" \
-    -not -path "./.terraform/*" \
-    -not -path "./test/fixtures/*/.terraform/*" \
-    -not -path "./test/fixtures/all_examples/*" \
-    -not -path "./test/fixtures/shared/*" \
-    -print0 \
-    | xargs -0 dirname | sort | uniq \
-    | xargs -L 1 -i{} bash -c 'terraform init "{}" > /dev/null && terraform validate "{}"'
-  echo "Running terraform fmt"
-  terraform fmt -check=true -write=false
+  set -e
+  echo "Running terraform validate and terraform fmt"
+  # Change to a temporary directory to avoid re-initializing terraform init
+  # over and over in the root of the repository.
+  find_files . -name "*.tf" -print \
+    | grep -v 'test/fixtures/shared' \
+    | compat_xargs -n1 dirname \
+    | sort -u \
+    | compat_xargs -t -n1 test/terraform_validate
 }
 
 # This function runs 'go fmt' and 'go vet' on every file
