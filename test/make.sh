@@ -79,7 +79,20 @@ function docker() {
 # directory paths which contain *.tf files.
 function check_terraform() {
   set -e
-  echo "Running terraform validate and terraform fmt"
+  # fmt is before validate for faster feedback, validate requires terraform
+  # init which takes time.
+  echo "Running terraform fmt"
+  find_files . -name "*.tf" -print0 \
+    | compat_xargs -0 -n1 dirname \
+    | sort -u \
+    | compat_xargs -t -n1 terraform fmt -diff -check=true -write=false
+  rval="$?"
+  if [[ "${rval}" -gt 0 ]]; then
+    echo "Error: terraform fmt failed with exit code ${rval}" >&2
+    echo "Check the output for diffs and correct using terraform fmt <dir>" >&2
+    return "${rval}"
+  fi
+  echo "Running terraform validate"
   # Change to a temporary directory to avoid re-initializing terraform init
   # over and over in the root of the repository.
   find_files . -name "*.tf" -print \
